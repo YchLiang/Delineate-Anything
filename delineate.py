@@ -100,8 +100,8 @@ def batch_routine(args):
     if not os.path.exists(args.batch_config):
         raise ValueError(f"{args.batch_config} is not exists.")
     
-    batch_config = yaml.safe_load(Path(args.batch_config).read_text())
-    base_config = yaml.safe_load(Path(batch_config["base_config"]).read_text())
+    batch_config = yaml.safe_load(Path(args.batch_config).read_text(encoding="utf-8"))
+    base_config = yaml.safe_load(Path(batch_config["base_config"]).read_text(encoding="utf-8"))
 
     overrides = {}
     if "override" in batch_config and batch_config["override"]:
