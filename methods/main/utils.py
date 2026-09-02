@@ -6,7 +6,24 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "create_geopackage_with_same_projection",
+    "normalize_output_format",
+    "output_extension",
 ]
+
+
+def normalize_output_format(value):
+    """Normalize a user-facing output format to 'gpkg' or 'shp'."""
+    fmt = str(value).strip().lower()
+    if fmt in ("gpkg", "geopackage"):
+        return "gpkg"
+    if fmt in ("shp", "shapefile", "esri shapefile"):
+        return "shp"
+    raise ValueError(f"Unsupported output_format '{value}': use 'gpkg' or 'shp'.")
+
+
+def output_extension(output_format):
+    """File extension of the final output for the given normalized format."""
+    return ".gpkg" if output_format == "gpkg" else ".shp"
 
 
 def create_geopackage_with_same_projection(dst_path, layer_name, projection, override_if_exists, pixel_size):

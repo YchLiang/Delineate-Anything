@@ -1,6 +1,12 @@
 model: ["large_v2"] # Model names: "small", "large" or "large_v2". Can be a list.
 method: main # Name of the method subfolder in 'methods'.
 
+# Output vector format: "gpkg" (GeoPackage, default) or "shp" (ESRI Shapefile).
+# The pipeline always processes on a temporary GeoPackage; for "shp" the results
+# (<name>.shp and <name>.simp.shp) are translated from it and the intermediate
+# .gpkg files are removed afterwards.
+output_format: gpkg
+
 execution_args:
   src_folder: ""
   temp_folder: ""

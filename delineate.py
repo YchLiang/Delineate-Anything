@@ -12,6 +12,8 @@ from copy import deepcopy
 from huggingface_hub import hf_hub_download
 from osgeo import gdal
 
+from methods.main.utils import normalize_output_format, output_extension
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 logging.raiseExceptions = False
@@ -144,7 +146,7 @@ def batch_routine(args):
             "name": folder,
             "config": config,
             "input": os.path.join(batch_config["data_root"], folder),
-            "output": os.path.join(batch_config["output_root"], folder + ".gpkg"),
+            "output": os.path.join(batch_config["output_root"], folder + output_extension(normalize_output_format(config.get("output_format", "gpkg")))),
             "temp": batch_config["temp_root"],
             "keep_temp": batch_config["keep_temp"],
             "mask": mask_path

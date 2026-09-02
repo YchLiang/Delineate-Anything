@@ -45,6 +45,14 @@ def execute(model_paths, config, verbose):
         config["execution_args"]["mask_filepath"]
     )
 
+    # The pipeline itself (masking, merging, simplification) is GeoPackage-based, so
+    # processing always runs on a .gpkg. Other output formats are translated from it
+    # at the end of the run.
+    output_format = normalize_output_format(config.get("output_format", "gpkg"))
+    requested_output_path = output_path
+    if output_format != "gpkg":
+        output_path = os.path.splitext(output_path)[0] + ".gpkg"
+
     if torch.cuda.is_available():
         device = 'cuda'
     elif torch.backends.mps.is_available():
@@ -201,6 +209,10 @@ def execute(model_paths, config, verbose):
         execute_simplification(gpkg_path, layer_name, config["simplification_args"], analyser.scale)
         logger.info(f"Simplification finished in {time.time() - start:.2f} seconds")
 
+    if output_format != "gpkg":
+        convert_gpkg_to_shapefile(requested_output_path, output_path,
+                                  config["simplification_args"]["simplify"] == True)
+
 def execute_simplification(gpkg_path, layer_name, config, scale):
     full_config = {
         "src": gpkg_path,
@@ -220,6 +232,30 @@ def execute_simplification(gpkg_path, layer_name, config, scale):
 
     simplify.simplify(full_config)
 
+
+def convert_gpkg_to_shapefile(shp_path, gpkg_path, with_simplification):
+    """Translate the working GeoPackage result(s) into Shapefile output and remove the intermediates.
+
+    The base result at gpkg_path is written to shp_path; when simplification was
+    produced, the adjacent '.simp.gpkg' is translated into '.simp.shp' as well.
+    Intermediate GeoPackages are only deleted once all translations succeeded.
+    """
+    def translate(src, dst):
+        logger.info(f"Writing shapefile: {dst}")
+        gdal.VectorTranslate(dst, src, format="ESRI Shapefile")
+
+    simp_gpkg = os.path.splitext(gpkg_path)[0] + ".simp.gpkg"
+    has_simp = with_simplification and os.path.exists(simp_gpkg)
+
+    translate(gpkg_path, shp_path)
+    if has_simp:
+        translate(simp_gpkg, os.path.splitext(shp_path)[0] + ".simp.shp")
+
+    os.remove(gpkg_path)
+    if has_simp:
+        os.remove(simp_gpkg)
+
+    logger.info("Intermediate GeoPackage files have been removed.")
 
 
 def execute_delineation(models, planner, postproc_config, passes, dataloader_config, layer_info, lclu_path, lclu_config, full_config, device):

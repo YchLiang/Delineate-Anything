@@ -24,6 +24,14 @@ If a mask filename does not match the folder name in `data_root`, you can assign
 
 These parameters must be properly set for accurate results.
 
+### `output_format`
+
+- **`gpkg`** *(default)* – results are written as GeoPackage: `<name>.gpkg` and `<name>.simp.gpkg`.
+- **`shp`** – results are written as ESRI Shapefile: `<name>.shp` and `<name>.simp.shp`.
+  Processing internally still uses a temporary GeoPackage, which is translated at the
+  end of the run and removed afterwards. Note that Shapefiles have a 10-character
+  field-name limit (the default fields `id`, `bg`, `area` are unaffected).
+
 ### `data_loader`
 
 - **`bands`** – Make sure the order corresponds to RGB channels in your images. Indexing starts at 1.  
