@@ -241,6 +241,12 @@ def convert_gpkg_to_shapefile(shp_path, gpkg_path, with_simplification):
     Intermediate GeoPackages are only deleted once all translations succeeded.
     """
     def translate(src, dst):
+        # a stale target (e.g. from a previous run) would make the translation
+        # fail or append, so remove its sidecar files first
+        stem = os.path.splitext(dst)[0]
+        for ext in (".shp", ".shx", ".dbf", ".prj"):
+            if os.path.exists(stem + ext):
+                os.remove(stem + ext)
         logger.info(f"Writing shapefile: {dst}")
         gdal.VectorTranslate(dst, src, format="ESRI Shapefile")
 
