@@ -68,6 +68,17 @@ passes:
       merge_relative_area_threshold: 0.5
       merge_asymetric_pixel_area_threshold: 32
       merge_asymetric_relative_area_threshold: 0.7
+      # Optional lower IoU bound for the asymmetric merge rule above (0 = stock behaviour).
+      # Cross-tile detections of the same field have moderate IoU (~0.3-0.6), while labels
+      # of adjacent fields share only a thin disagreement band (IoU < 0.2). Setting ~0.15
+      # prevents adjacent parcels from being chain-merged into one blob on high-resolution
+      # imagery.
+      merge_min_iou: 0.0
+      # Optional unconditional-merge IoU (0 = stock behaviour): pairs that overlap this
+      # strongly are re-detections of one field and are merged even when the rel-area
+      # rules reject them. Setting ~0.5 keeps tiles of the same field stitched and avoids
+      # straight tile-boundary seams (over-segmentation) in the output.
+      merge_always_iou: 0.0
 
       # Prefer not to change these unless needed
       merging_edge_width: 4

@@ -1,8 +1,22 @@
+import os
+
 import numpy as np
 import cv2
 from math import ceil
 
 class PostprocWorker:
+    @staticmethod
+    def log_merge_candidate(iou, area_intersect, rel_cur, rel_new, cur_edge, new_edge):
+        """Append one CSV row per asymmetric-merge candidate when DELANY_MERGE_LOG is set.
+
+        Used for tuning merge_min_iou: same-field cross-tile pairs and adjacent-field
+        disagreement bands populate different IoU ranges.
+        """
+        path = os.environ.get("DELANY_MERGE_LOG")
+        if not path:
+            return
+        with open(path, "a") as f:
+            f.write(f"{iou:.4f},{area_intersect},{rel_cur:.4f},{rel_new:.4f},{int(cur_edge)},{int(new_edge)}\n")
     @staticmethod
     def first_wave_postprocessing(model_results, nodata, bounds, id_counter, id_counter_increment):
         fields = []
@@ -64,6 +78,16 @@ class PostprocWorker:
         MERGE_RELATIVE_AREA_THRESHOLD = config["merge_relative_area_threshold"]
         MERGE_ASYMETRIC_MERGING_PIXEL_AREA_THRESHOLD = config["merge_asymetric_pixel_area_threshold"]
         MERGE_ASYMETRYC_MERGING_RELATIVE_AREA_THRESHOLD = config["merge_asymetric_relative_area_threshold"]
+
+        # Optional lower IoU bound for rel-area/asymmetric merging. Cross-tile detections of
+        # the SAME field overlap substantially (moderate IoU), while labels of ADJACENT
+        # fields only share a thin disagreement band (tiny IoU). Gating on IoU keeps the
+        # former merged and the latter separate, regardless of the raw intersect area.
+        MERGE_MIN_IOU = config.get("merge_min_iou", 0.0)
+        # Optional unconditional-merge IoU: pairs overlapping this strongly are treated as
+        # re-detections of one field and merged even when the rel-area rules reject them.
+        # Prevents tile-seam over-segmentation (straight orthogonal cuts at tile boundaries).
+        MERGE_ALWAYS_IOU = config.get("merge_always_iou", 0.0)
 
         fields = entry["fields"]
         masks = entry["masks"]
@@ -190,9 +214,10 @@ class PostprocWorker:
         old_weights = dst_weigths[posY_begin:posY_end, posX_begin:posX_end]
 
         # # merge fields
-        PostprocWorker.find_edge_mapping(old_instances, instances[in_py_begin:in_py_end, in_px_begin:in_px_end], mapping_dict, area_dict, 
+        PostprocWorker.find_edge_mapping(old_instances, instances[in_py_begin:in_py_end, in_px_begin:in_px_end], mapping_dict, area_dict,
                         MERGE_IOU, MERGE_EDGE_IOU, MERGE_EDGE_PIXELS,
-                        MERGE_RELATIVE_AREA_THRESHOLD, MERGE_ASYMETRIC_MERGING_PIXEL_AREA_THRESHOLD, MERGE_ASYMETRYC_MERGING_RELATIVE_AREA_THRESHOLD)
+                        MERGE_RELATIVE_AREA_THRESHOLD, MERGE_ASYMETRIC_MERGING_PIXEL_AREA_THRESHOLD, MERGE_ASYMETRYC_MERGING_RELATIVE_AREA_THRESHOLD,
+                        MERGE_MIN_IOU, MERGE_ALWAYS_IOU)
         # # end merge
 
         write_mask = weights[in_py_begin:in_py_end, in_px_begin:in_px_end] > old_weights
@@ -201,11 +226,12 @@ class PostprocWorker:
         old_weights[write_mask] = weights[in_py_begin:in_py_end, in_px_begin:in_px_end][write_mask]
 
     @staticmethod
-    def find_edge_mapping(current, new, dst, area_dict, merge_iou, 
-                          merge_edge_iou, merge_edge_pixels, 
-                          merge_relative_area_threshold, 
-                          merge_asymetric_pixel_area_threshold, 
-                          merge_asymetric_relative_area_threshold):
+    def find_edge_mapping(current, new, dst, area_dict, merge_iou,
+                          merge_edge_iou, merge_edge_pixels,
+                          merge_relative_area_threshold,
+                          merge_asymetric_pixel_area_threshold,
+                          merge_asymetric_relative_area_threshold,
+                          merge_min_iou=0.0, merge_always_iou=0.0):
         uniq_intersect = np.unique((current.astype("uint64") << 32) | new.astype("uint64"), return_counts=True)
         uniq_dict = dict(zip(uniq_intersect[0], uniq_intersect[1]))
 
@@ -267,6 +293,19 @@ class PostprocWorker:
             case_1 = case_1_relative_area_merging or case_1_asymetrics_current or case_1_asymetrics_new
 
             if case_0 and case_1:
+                # the asymmetric rule merges pairs that overlap only through a thin
+                # disagreement band (adjacent fields whose labels spill across a
+                # divider); require a minimum IoU so genuine same-field pairs survive
+                # while adjacent-field chain merges are suppressed
+                if (case_1_asymetrics_current or case_1_asymetrics_new) and not case_1_relative_area_merging:
+                    PostprocWorker.log_merge_candidate(iou, area_intersect, rel_area_current, rel_area_new,
+                                                       int(key_current) % 2 == 1, int(key_new) % 2 == 1)
+                    case_1 = case_1_relative_area_merging or iou > merge_min_iou
+
+            # strong-overlap pairs are re-detections of one field: merge them even when
+            # the rel-area rules reject them, so tiles of the same field stay stitched
+            # instead of splitting along straight tile-boundary seams
+            if iou > merge_always_iou or (case_0 and case_1):
                 dst[int(key_new)] = dst.get(int(key_new), []) + [int(key_current)]
 
     @staticmethod
